@@ -1,125 +1,110 @@
 document.addEventListener("DOMContentLoaded", function () {
-    // Highlight the active navigation link
-    const currentPage = window.location.pathname.split("/").pop(); // Get current filename
-    const navLinks = document.querySelectorAll(".nav-links a");
+  function extractVideoId(url) {
+    const patterns = [
+      /(?:v=|\/)([0-9A-Za-z_-]{11})\b/, 
+      /(?:embed\/)([0-9A-Za-z_-]{11})/, 
+      /(?:youtu\.be\/)([0-9A-Za-z_-]{11})/
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  }
 
-    navLinks.forEach(link => {
-        if (link.getAttribute("href") === currentPage) {
-            link.classList.add("active"); // Apply active class to the current page's nav link
-        }
-    });
+  function getThumbnailUrls(videoId) {
+    return {
+      max: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      hq: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      mq: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      sd: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
+      default: `https://img.youtube.com/vi/${videoId}/default.jpg`
+    };
+  }
 
-    // YouTube Thumbnail Extractor Logic
-    function extractVideoId(url) {
-        const patterns = [
-            /(?:v=|\/)([0-9A-Za-z_-]{11}).*/, // Regular youtube.com URL
-            /(?:embed\/)([0-9A-Za-z_-]{11})/, // Embed URL
-            /(?:youtu\.be\/)([0-9A-Za-z_-]{11})/ // Shortened youtu.be URL
-        ];
+  async function checkImageExists(url) {
+    try {
+      const response = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
 
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match) return match[1];
-        }
+  async function handleSearch() {
+    const input = document.getElementById('searchInput');
+    const resultsContainer = document.getElementById('results');
+    const url = input.value.trim();
 
-        return null;
+    if (!url) {
+      alert('Please enter a YouTube video URL');
+      return;
     }
 
-    function getThumbnailUrls(videoId) {
-        return {
-            max: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-            hq: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-            mq: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-            sd: `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-            default: `https://img.youtube.com/vi/${videoId}/default.jpg`
-        };
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      alert('Invalid YouTube URL. Please check and try again.');
+      return;
     }
 
-    async function checkImageExists(url) {
-        try {
-            const response = await fetch(url, { method: 'HEAD' });
-            return response.ok;
-        } catch {
-            return false;
-        }
+    resultsContainer.innerHTML = '<p>Loading thumbnails...</p>';
+    input.disabled = true;
+
+    const thumbnails = getThumbnailUrls(videoId);
+    const qualityOrder = ["max", "hq", "mq", "sd", "default"];
+    const checkResults = await Promise.all(qualityOrder.map(q => checkImageExists(thumbnails[q])));
+    const availableThumbnails = qualityOrder
+      .filter((q, i) => checkResults[i])
+      .reduce((acc, q) => ({ ...acc, [q]: thumbnails[q] }), {});
+
+    input.disabled = false;
+
+    if (Object.keys(availableThumbnails).length === 0) {
+      resultsContainer.innerHTML = '<p>No thumbnails found for this video.</p>';
+      return;
     }
 
-    async function downloadImage(imageUrl, quality) {
-        try {
-            const response = await fetch(imageUrl);
-            const blob = await response.blob();
+    // Use the highest quality available based on the qualityOrder.
+    const bestQuality = Object.keys(availableThumbnails)[0];
 
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `youtube-thumbnail-${quality}.jpg`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error("Error downloading image:", error);
+    let thumbnailHtml = `<div class="thumbnail-card">`;
+    thumbnailHtml += `<img src="${availableThumbnails[bestQuality]}" alt="YouTube Thumbnail">`;
+    thumbnailHtml += `<div class="download-options">`;
+    thumbnailHtml += `<button class="download-btn" onclick="downloadImage('${availableThumbnails[bestQuality]}', 'thumbnail-${bestQuality}.jpg')">Download Best Available Thumbnail</button>`;
+    thumbnailHtml += `</div></div>`;
+    resultsContainer.innerHTML = thumbnailHtml;
+  }
+
+  function downloadImage(url, filename) {
+    fetch(url, { mode: 'cors' })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok.');
         }
+        return response.blob();
+      })
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      })
+      .catch(error => {
+        console.error('Error downloading image:', error);
+        alert('Download failed! Try right-clicking and saving the image manually.');
+      });
+  }
+
+  document.getElementById('searchInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      handleSearch();
     }
+  });
 
-    async function handleSearch() {
-        const input = document.getElementById('searchInput');
-        const resultsContainer = document.getElementById('results');
-        const url = input.value.trim();
-
-        if (!url) {
-            alert('Please enter a YouTube video URL');
-            return;
-        }
-
-        const videoId = extractVideoId(url);
-        if (!videoId) {
-            alert('Invalid YouTube URL. Please check the URL and try again.');
-            return;
-        }
-
-        resultsContainer.innerHTML = '<p>Loading thumbnails...</p>';
-
-        try {
-            const thumbnails = getThumbnailUrls(videoId);
-            const qualityOrder = ["max", "hq", "mq", "sd", "default"];
-            let availableThumbnails = {};
-
-            for (let quality of qualityOrder) {
-                if (await checkImageExists(thumbnails[quality])) {
-                    availableThumbnails[quality] = thumbnails[quality];
-                }
-            }
-
-            if (Object.keys(availableThumbnails).length === 0) {
-                resultsContainer.innerHTML = '<p>No thumbnails found for this video.</p>';
-                return;
-            }
-
-            let thumbnailHtml = `<div class="thumbnail-card">`;
-            let bestQuality = Object.keys(availableThumbnails)[0];
-            thumbnailHtml += `
-                <img src="${availableThumbnails[bestQuality]}" alt="YouTube Thumbnail">
-                <div class="download-options">
-            `;
-
-            for (let quality in availableThumbnails) {
-                thumbnailHtml += `
-                    <button class="download-btn" onclick="downloadImage('${availableThumbnails[quality]}', '${quality}')">
-                        Download ${quality.toUpperCase()} Resolution
-                    </button>
-                `;
-            }
-
-            thumbnailHtml += `</div></div>`;
-            resultsContainer.innerHTML = thumbnailHtml;
-        } catch (error) {
-            console.error('Error:', error);
-            resultsContainer.innerHTML = '<p>An error occurred while fetching thumbnails.</p>';
-        }
-    }
-
-    document.getElementById('searchInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            handleSearch();
-        }
-    });
+  window.handleSearch = handleSearch;
+  window.downloadImage = downloadImage;
 });
