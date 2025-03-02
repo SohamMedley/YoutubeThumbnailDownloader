@@ -70,7 +70,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let thumbnailHtml = `<div class="thumbnail-card">`;
     thumbnailHtml += `<img src="${availableThumbnails[bestQuality]}" alt="YouTube Thumbnail">`;
     thumbnailHtml += `<div class="download-options">`;
-    thumbnailHtml += `<button class="download-btn" onclick="downloadImage('${availableThumbnails[bestQuality]}', 'thumbnail-${bestQuality}.jpg')">Download Thumbnail</button>`;
+    thumbnailHtml += `<button class="download-btn" onclick="downloadImage('${availableThumbnails[bestQuality]}', 'thumbnail-${bestQuality}.jpg')">Download Best Available Thumbnail</button>`;
     thumbnailHtml += `</div></div>`;
     resultsContainer.innerHTML = thumbnailHtml;
   }
